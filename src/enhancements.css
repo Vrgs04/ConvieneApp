@@ -10,10 +10,16 @@
 .field-title .required{color:#a8f0c1;background:rgba(87,227,137,.12)}
 .field-title .optional{color:#aeb7b5;background:rgba(255,255,255,.07)}
 .field-title .unit{color:#d9e2df;background:#2b3431}
-.info-tip{position:relative;color:#79e9a1;display:inline-flex;cursor:help;outline:none;padding:2px}
-.info-tip [role="tooltip"]{display:none;position:absolute;z-index:20;right:0;top:27px;width:min(260px,72vw);padding:10px 12px;border-radius:11px;background:#edf5f0;color:#17201d;font-size:.75rem;font-weight:500;line-height:1.4;box-shadow:0 10px 30px rgba(0,0,0,.35)}
-.info-tip:hover [role="tooltip"],.info-tip:focus [role="tooltip"],.info-tip:focus-within [role="tooltip"]{display:block}
+.info-tip{position:relative;z-index:31;color:#79e9a1;background:transparent;border:0;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;outline:none;padding:4px;margin:-4px;min-height:28px;width:28px;flex:0 0 28px;box-shadow:none;touch-action:manipulation}
+.info-tip:focus-visible{outline:2px solid #79e9a1;outline-offset:2px}
+.info-backdrop{position:fixed;z-index:29;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(2px)}
+.info-tip [role="tooltip"]{position:fixed;z-index:30;left:18px;right:18px;top:50%;transform:translateY(-50%);width:auto;max-width:430px;margin:auto;padding:18px;border-radius:16px;background:#edf5f0;color:#17201d;font-size:.88rem;font-weight:500;line-height:1.5;text-align:left;box-shadow:0 18px 55px rgba(0,0,0,.5)}
+.info-tip [role="tooltip"] b{display:block;margin-bottom:6px;font-size:1rem;color:#0b6b38}
 .input-with-unit{position:relative;display:block}.input-with-unit input{padding-right:76px}.input-with-unit>b{position:absolute;right:13px;top:50%;transform:translateY(-50%);font-size:.7rem;color:#83dca3;pointer-events:none}
 .inline-help{display:inline-flex;color:#79e9a1;vertical-align:middle;margin-left:4px}
+.history-item.profitable .pill{color:#baf5cf;background:rgba(28,162,82,.22);border:1px solid rgba(87,227,137,.4)}
+.history-item.regular .pill{color:#ffe4a0;background:rgba(203,145,18,.22);border:1px solid rgba(245,196,81,.45)}
+.history-item.unprofitable .pill{color:#ffc1bf;background:rgba(201,54,50,.22);border:1px solid rgba(255,107,104,.45)}
+html,body{touch-action:pan-x pan-y}input,textarea,select{font-size:16px}
 @media(prefers-color-scheme:light){.field-title{color:#17201d}.field-title .unit{background:#dce8e1;color:#285f3d}.field-title .optional{background:#e5ebe8;color:#5e6b67}}
 @media(max-width:360px){.image-actions{grid-template-columns:1fr}}
