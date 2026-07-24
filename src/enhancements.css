@@ -7,7 +7,7 @@
 .field-title{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-height:25px;color:#dce4e1;font-weight:650}
 .field-title>span:first-child{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
 .field-title small,.field-title .unit{font-size:.61rem;line-height:1;padding:4px 6px;border-radius:99px;text-transform:uppercase;letter-spacing:.04em}
-.field-title .required{color:#a8f0c1;background:rgba(87,227,137,.12)}
+.field-title .required{color:#06331a;background:#79e9a1;border:1px solid #a8f0c1;font-weight:900}
 .field-title .optional{color:#aeb7b5;background:rgba(255,255,255,.07)}
 .field-title .unit{color:#d9e2df;background:#2b3431}
 .info-tip{position:relative;color:#79e9a1;background:transparent;border:0;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;outline:none;padding:4px;margin:-4px;min-height:28px;width:28px;flex:0 0 28px;box-shadow:none;touch-action:manipulation}
@@ -22,5 +22,5 @@
 .history-item.unprofitable .pill{color:#2b0504;background:#ff7774;border:1px solid #ffaaa7;text-shadow:none}
 .settings-toast{position:fixed;z-index:1100;left:18px;right:18px;bottom:calc(88px + env(safe-area-inset-bottom));margin:auto;max-width:430px;display:flex;align-items:center;justify-content:center;gap:9px;padding:14px 16px;border-radius:14px;background:#dff8e8;color:#075e31;border:1px solid #57e389;font-size:.88rem;font-weight:800;box-shadow:0 14px 45px rgba(0,0,0,.45)}.settings-toast svg{flex:0 0 auto}.settings-toast.error{background:#ffe1df;color:#7a1714;border-color:#ff7774}
 html,body{touch-action:pan-x pan-y}input,textarea,select{font-size:16px}
-@media(prefers-color-scheme:light){.field-title{color:#17201d}.field-title .unit{background:#dce8e1;color:#285f3d}.field-title .optional{background:#e5ebe8;color:#5e6b67}}
+@media(prefers-color-scheme:light){.field-title{color:#17201d}.field-title .required{color:#053018;background:#66dc90;border-color:#29985a}.field-title .unit{background:#dce8e1;color:#285f3d}.field-title .optional{background:#e5ebe8;color:#5e6b67}}
 @media(max-width:360px){.image-actions{grid-template-columns:1fr}}
