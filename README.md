@@ -51,7 +51,7 @@ El historial local nunca guarda capturas. Tesseract.js se descarga únicamente a
 4. Opcional: `npx wrangler d1 create conviene-db`, copie el ID a un binding D1 llamado `DB` y ejecute `npx wrangler d1 migrations apply conviene-db --remote`.
 5. Despliegue con la integración Git o `npx wrangler pages deploy dist`.
 
-Sin el binding `DB`, `save: true` sigue devolviendo el análisis pero no persiste remotamente. La configuración del conductor no se envía a la API en este MVP: el endpoint usa las estimaciones documentadas de `DEFAULT_SETTINGS`. Para producción personal, ajuste esos valores en el código o añada un perfil autenticado. El panel es local y no expone el secreto.
+Con el binding `DB`, cada solicitud que incluya un `deviceId` se registra automáticamente, aunque el cuerpo no incluya `save`. La configuración guardada en la PWA se sincroniza con ese mismo identificador y la API la usa para el cálculo del Atajo.
 
 ## Atajo de iOS
 
@@ -62,7 +62,7 @@ La pantalla “Configurar Atajo” contiene el flujo completo. Resumen:
 3. Tomar captura.
 4. Extraer texto de la imagen.
 5. Obtener contenido de `https://convieneapp.pages.dev/api/analyze?format=text` por POST.
-6. Cuerpo JSON con `text` (variable azul “Texto de la imagen”), `platform`, `token` y `save`.
+6. Cuerpo JSON con `text` (variable azul “Texto de la imagen”), `platform`, `token` y `deviceId`. No se necesita botón ni campo `save`: el registro es automático.
 7. Añadir “Mostrar notificación” y usar como contenido la variable “Contenido de URL”.
 8. Opcionalmente, añadir también “Mostrar resultado”.
 
