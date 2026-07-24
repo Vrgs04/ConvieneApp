@@ -1,24 +1,1139 @@
-import {useCallback,useEffect,useRef,useState} from 'react'; import {NavLink,Route,Routes,useNavigate} from 'react-router-dom'; import {BarChart3,Bell,Camera,CarFront,Clock3,History as HistoryIcon,Home,ImagePlus,Info,Settings as Cog,Share2,Sparkles,WalletCards} from 'lucide-react';
-import type {AnalysisHistoryItem,OCRParseResult,Platform,TripAnalysis,VehicleSettings} from './types'; import {DEFAULT_SETTINGS} from './domain/settings'; import {parseOCR} from './domain/parsers'; import {analyzeTrip,titles} from './domain/calculator'; import {repository} from './data/repository';
-import {enableNotifications,notificationsSupported,notifyAnalysis} from './notifications'; import {preprocessFareForOCR,preprocessForOCR} from './ocr/imagePreprocess';
-const money=(v=0)=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN',maximumFractionDigits:0}).format(v); const num=(v=0)=>v.toFixed(1);
-async function syncRemoteSettings(settings:VehicleSettings){if(!settings.syncCode)return;const response=await fetch('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({deviceId:settings.syncCode,settings})});if(!response.ok)throw new Error('No se pudo sincronizar la configuración.')}
-const statusLabel={profitable:'Rentable',regular:'Regular',unprofitable:'No rentable',insufficient:'Incompleto'};
-function Card({children,className=''}:{children:React.ReactNode,className?:string}){return <section className={`card ${className}`}>{children}</section>}
-function App(){const[settings,setSettings]=useState(DEFAULT_SETTINGS);const[history,setHistory]=useState<AnalysisHistoryItem[]>([]);const knownRemote=useRef<Set<string>|null>(null);const refresh=useCallback(async()=>{const local=await repository.history(),current=await repository.settings();let remote:AnalysisHistoryItem[]=[];if(current.syncCode)try{const response=await fetch('/api/history?deviceId='+encodeURIComponent(current.syncCode));if(response.ok)remote=((await response.json()) as {items:AnalysisHistoryItem[]}).items||[]}catch{/* conserva el historial local sin conexión */}if(knownRemote.current===null)knownRemote.current=new Set(remote.map(item=>item.id));else{const newcomers=remote.filter(item=>!knownRemote.current!.has(item.id));for(const item of newcomers)void notifyAnalysis(item.analysis);for(const item of remote)knownRemote.current.add(item.id)}const unique=new Map([...remote,...local].map(item=>[item.id,item]));setHistory([...unique.values()].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)))},[]);useEffect(()=>{repository.settings().then(current=>{setSettings(current);void syncRemoteSettings(current).catch(()=>undefined);void refresh()})},[refresh]);useEffect(()=>{const update=()=>{if(document.visibilityState==='visible')void refresh()};window.addEventListener('focus',update);document.addEventListener('visibilitychange',update);return()=>{window.removeEventListener('focus',update);document.removeEventListener('visibilitychange',update)}},[refresh]);return <div className="app"><main><Routes><Route path="/" element={<Dashboard items={history}/>}/><Route path="/analyze" element={<Analyzer settings={settings} refresh={refresh}/>}/><Route path="/history" element={<History items={history} refresh={refresh}/>}/><Route path="/stats" element={<Stats items={history}/>}/><Route path="/settings" element={<Settings settings={settings} save={async s=>{setSettings(s);await repository.saveSettings(s);await syncRemoteSettings(s).catch(()=>undefined);await refresh()}}/>}/><Route path="/shortcut" element={<Shortcut settings={settings}/>}/></Routes></main><Nav/></div>}
-function Nav(){return <nav className="nav" aria-label="Navegación principal">{[[Home,'/','Inicio'],[Sparkles,'/analyze','Analizar'],[HistoryIcon,'/history','Historial'],[BarChart3,'/stats','Datos'],[Cog,'/settings','Ajustes']].map(([Icon,to,label])=><NavLink key={to as string} to={to as string} end={to==='/'}><Icon size={22}/><span>{label as string}</span></NavLink>)}</nav>}
-function Header({eyebrow='¿CONVIENE?',title,sub}:{eyebrow?:string,title:string,sub?:string}){return <header><p className="eyebrow">{eyebrow}</p><h1>{title}</h1>{sub&&<p className="muted">{sub}</p>}</header>}
-type FieldHelp={required?:boolean;unit?:string;help:string};
-function FieldTitle({label,required=false,unit,help}:{label:string}&FieldHelp){const[open,setOpen]=useState(false);return <span className="field-title"><span>{label}<small className={required?'required':'optional'}>{required?'Obligatorio':'Opcional'}</small>{unit&&<b className="unit">{unit}</b>}</span><button type="button" className="info-tip" aria-label={`Información sobre ${label}`} aria-expanded={open} onPointerDown={e=>{e.preventDefault();e.stopPropagation()}} onClick={e=>{e.preventDefault();e.stopPropagation();setOpen(v=>!v)}}><Info size={17}/>{open&&<><span className="info-backdrop" aria-hidden="true"/><span role="tooltip"><b>{label}</b>{help}</span></>}</button></span>}
-const SETTINGS_HELP:Record<string,FieldHelp>={fuelPricePerLiter:{required:true,unit:'MXN/L',help:'Precio actual que pagas por cada litro de combustible.'},fuelEfficiencyKmPerLiter:{required:true,unit:'km/L',help:'Kilómetros reales que recorre tu vehículo con un litro. Usa un promedio urbano.'},maintenanceCostPerKm:{required:true,unit:'MXN/km',help:'Reserva por kilómetro para servicios, llantas, frenos y desgaste.'},additionalCostPerKm:{unit:'MXN/km',help:'Otros costos variables por kilómetro, como lavado, estacionamiento o comisiones.'},contingencyPercent:{unit:'%',help:'Margen adicional aplicado a los costos para cubrir imprevistos.'},extraMinutes:{unit:'min',help:'Tiempo extra estimado por semáforos, espera o tráfico no contemplado.'}};
-function Dashboard({items}:{items:AnalysisHistoryItem[]}){const[permission,setPermission]=useState(typeof Notification==='undefined'?'default':Notification.permission);const today=new Date().toDateString(),daily=items.filter(x=>new Date(x.createdAt).toDateString()===today),net=daily.reduce((a,x)=>a+(x.analysis.metrics?.estimatedNetProfit||0),0),gross=daily.reduce((a,x)=>a+(x.analysis.parse.offeredFare||0),0);const activate=async()=>setPermission(await enableNotifications());return <><Header title="Decide en segundos." sub="Rentabilidad estimada antes de aceptar un viaje."/><NavLink className="hero-button" to="/analyze"><Sparkles/> Analizar solicitud</NavLink><button className="secondary notification-button" onClick={activate} disabled={!notificationsSupported()||permission==='granted'}><Bell/>{permission==='granted'?'Notificaciones activadas':permission==='denied'?'Permiso de notificaciones bloqueado':'Activar notificaciones'}</button><div className="shortcut-state"><span className="pulse"/>Atajo de iOS listo para configurar <NavLink to="/shortcut">Ver guía</NavLink></div><h2>Resumen de hoy</h2><div className="metric-grid"><Card><small>Solicitudes</small><strong>{daily.length}</strong></Card><Card><small>Recomendadas</small><strong>{daily.filter(x=>x.analysis.classification==='profitable').length}</strong></Card><Card><small>Bruto ofrecido</small><strong>{money(gross)}</strong></Card><Card className="accent"><small>Neto estimado</small><strong>{money(net)}</strong></Card></div><Card className="notice"><CarFront/><div><b>Primero la seguridad</b><p>Configura y prueba el Atajo con el vehículo estacionado. Nunca interactúes mientras conduces.</p></div></Card></>}
-function Analyzer({settings,refresh}:{settings:VehicleSettings,refresh:()=>void}){const nav=useNavigate(),[text,setText]=useState(''),[platform,setPlatform]=useState<'auto'|Platform>('auto'),[parsed,setParsed]=useState<OCRParseResult>(),[analysis,setAnalysis]=useState<TripAnalysis>(),[image,setImage]=useState<string>(),[busy,setBusy]=useState(false),[ocrError,setOcrError]=useState('');const run=(p=parsed||parseOCR(text,platform))=>{const next=analyzeTrip(p,settings);setParsed(p);setAnalysis(next);void notifyAnalysis(next)};const change=(k:keyof OCRParseResult,v:string)=>setParsed(p=>p?{...p,[k]:v===''?undefined:Number(v)}:p);const save=async()=>{if(!analysis)return;await repository.save({id:crypto.randomUUID(),createdAt:new Date().toISOString(),analysis,driverDecision:'pending'});refresh();nav('/history')};const ocr=async(f:File)=>{if(image)URL.revokeObjectURL(image);setImage(URL.createObjectURL(f));setBusy(true);setOcrError('');try{const prepared=await preprocessForOCR(f),farePrepared=await preprocessFareForOCR(f);const {createWorker,PSM}=await import('tesseract.js');const w=await createWorker('spa');await w.setParameters({preserve_interword_spaces:'1',user_defined_dpi:'300',tessedit_pageseg_mode:PSM.SINGLE_BLOCK});const{data}=await w.recognize(prepared);await w.setParameters({tessedit_pageseg_mode:PSM.SPARSE_TEXT});const{data:fareData}=await w.recognize(farePrepared);await w.terminate();const combined=(fareData.text+'\n'+data.text).trim();setText(combined);if(!combined)setOcrError('No se detectó texto. Prueba una captura más nítida o pega el texto de Atajos.')}catch{setOcrError('No se pudo reconocer la imagen. Revisa tu conexión e inténtalo de nuevo.')}finally{setBusy(false)}};const file=(e:React.ChangeEvent<HTMLInputElement>)=>{const f=e.target.files?.[0];if(f)void ocr(f);e.target.value=''};return <><Header title="Analizar solicitud" sub="Pega el texto de Atajos o usa una captura."/><Card><label>Plataforma<select value={platform} onChange={e=>setPlatform(e.target.value as typeof platform)}><option value="auto">Detectar automáticamente</option><option value="uber">Uber</option><option value="didi">DiDi</option><option value="other">Otra</option></select></label><label>Texto extraído<textarea rows={7} value={text} onChange={e=>setText(e.target.value)} placeholder={'Ejemplo:\n$121.93\n7 min (1.6 km)\n27 min (10.7 km)'}/></label><div className="image-actions"><label className="upload"><ImagePlus/> {busy?'Procesando…':'Elegir de galería'}<input type="file" accept="image/*" disabled={busy} onChange={file}/></label><label className="upload"><Camera/> Tomar foto<input type="file" accept="image/*" capture="environment" disabled={busy} onChange={file}/></label></div>{ocrError&&<p className="error" role="alert">{ocrError}</p>}{image&&<div className="preview"><img src={image} alt="Vista previa de la captura"/><button className="secondary" onClick={()=>{URL.revokeObjectURL(image);setImage(undefined)}}>Eliminar imagen</button></div>}<button onClick={()=>run()} disabled={!text.trim()||busy}>Analizar ahora</button></Card>{parsed&&<Card><h2>Datos detectados</h2><div className="form-grid">{([['offeredFare','Tarifa'],['pickupDistanceKm','Recogida km'],['tripDistanceKm','Viaje km'],['pickupDurationMin','Recogida min'],['tripDurationMin','Viaje min']] as const).map(([k,l])=><label key={k}>{l}<input inputMode="decimal" type="number" value={parsed[k]??''} onChange={e=>change(k,e.target.value)}/></label>)}</div><button className="secondary" onClick={()=>run(parsed)}>Calcular nuevamente</button></Card>}{analysis&&<Result analysis={analysis} save={save}/>}</>}
-function Result({analysis,save}:{analysis:TripAnalysis,save:()=>void}){const m=analysis.metrics,p=analysis.parse;return <Card className={`result ${analysis.classification}`}><span className="pill">{statusLabel[analysis.classification]}</span><h2>{titles[analysis.classification]}</h2>{m?<><div className="result-hero"><small>Neto estimado</small><strong>{money(m.estimatedNetProfit)}</strong><span>{money(m.netPerKm)}/km · {money(m.netPerHour)}/h</span></div><div className="details">{[['Tarifa',money(p.offeredFare)],['Distancia total',`${num(m.totalDistanceKm)} km`],['Tiempo total',`${Math.round(m.totalDurationMin)} min`],['Bruto por km',money(m.grossPerKm)],['Bruto por hora',money(m.grossPerHour)],['Combustible',money(m.fuelCost)],['Mantenimiento',money(m.maintenanceCost)],['Costo total',money(m.estimatedTotalCost)]].map(([l,v])=><div key={l}><span>{l}</span><b>{v}</b></div>)}</div></>:<p>Faltan: {analysis.missingFields.join(', ')}</p>}<ul>{analysis.reasons.map(r=><li key={r}>{r}</li>)}</ul><p className="disclaimer">Estimación orientativa; no representa ingresos reales ni garantiza el resultado.</p><button onClick={save} disabled={!m}>Guardar análisis</button></Card>}
-function History({items,refresh}:{items:AnalysisHistoryItem[],refresh:()=>void}){const[q,setQ]=useState(''),[result,setResult]=useState('all');useEffect(()=>{void refresh()},[refresh]);const filtered=items.filter(x=>(result==='all'||x.analysis.classification===result)&&`${x.analysis.parse.platform} ${x.analysis.parse.offeredFare}`.includes(q.toLowerCase()));const exportCsv=()=>{const rows=[['Fecha','Plataforma','Tarifa','Neto estimado','Resultado','Decisión'],...filtered.map(x=>[x.createdAt,x.analysis.parse.platform,x.analysis.parse.offeredFare||'',x.analysis.metrics?.estimatedNetProfit||'',x.analysis.classification,x.driverDecision])];const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([rows.map(r=>r.join(',')).join('\n')],{type:'text/csv'}));a.download='conviene-historial.csv';a.click()};return <><Header title="Historial" sub={`${items.length} análisis locales y sincronizados.`}/><div className="filters"><input placeholder="Buscar" value={q} onChange={e=>setQ(e.target.value)}/><select value={result} onChange={e=>setResult(e.target.value)}><option value="all">Todos</option><option value="profitable">Rentables</option><option value="regular">Regulares</option><option value="unprofitable">No rentables</option></select></div><button className="secondary" onClick={exportCsv} disabled={!filtered.length}>Exportar CSV</button>{!filtered.length?<Card className="empty"><Clock3/><h2>Aún no hay análisis</h2><p>Los viajes que guardes aparecerán aquí.</p></Card>:<div className="list">{filtered.map(x=><Card className={`history-item ${x.analysis.classification}`} key={x.id}><div><span className="pill">{statusLabel[x.analysis.classification]}</span><h3>{x.analysis.parse.platform.toUpperCase()} · {money(x.analysis.parse.offeredFare)}</h3><small>{new Date(x.createdAt).toLocaleString('es-MX')}</small></div><div className="right"><b>{money(x.analysis.metrics?.estimatedNetProfit)} neto</b><select aria-label="Decisión del conductor" value={x.driverDecision} onChange={async e=>{await repository.save({...x,driverDecision:e.target.value as AnalysisHistoryItem['driverDecision']});refresh()}}><option value="pending">Sin decisión</option><option value="accepted">Aceptado</option><option value="rejected">Rechazado</option></select><button className="danger-link" onClick={async()=>{if(confirm('¿Eliminar este análisis?')){await repository.remove(x.id);refresh()}}}>Eliminar</button></div></Card>)}</div>}</>}
-function Stats({items}:{items:AnalysisHistoryItem[]}){const done=items.filter(x=>x.analysis.metrics),avg=(f:(x:AnalysisHistoryItem)=>number)=>done.length?done.reduce((a,x)=>a+f(x),0)/done.length:0;const platforms=['uber','didi'].map(p=>({p,count:done.filter(x=>x.analysis.parse.platform===p).length,net:avg(x=>x.analysis.parse.platform===p?(x.analysis.metrics?.netPerKm||0):0)}));return <><Header title="Estadísticas" sub="Estimaciones guardadas; no son ganancias reales."/><div className="metric-grid"><Card><small>Analizadas</small><strong>{items.length}</strong></Card><Card><small>Recomendables</small><strong>{items.length?Math.round(items.filter(x=>x.analysis.classification==='profitable').length/items.length*100):0}%</strong></Card><Card><small>Aceptadas</small><strong>{items.length?Math.round(items.filter(x=>x.driverDecision==='accepted').length/items.length*100):0}%</strong></Card><Card><small>Neto prom./km</small><strong>{money(avg(x=>x.analysis.metrics?.netPerKm||0))}</strong></Card><Card><small>Bruto prom./hora</small><strong>{money(avg(x=>x.analysis.metrics?.grossPerHour||0))}</strong></Card><Card><small>Neto prom./hora</small><strong>{money(avg(x=>x.analysis.metrics?.netPerHour||0))}</strong></Card></div><Card><h2>Comparación por plataforma</h2>{platforms.map(x=><div className="bar-row" key={x.p}><span>{x.p.toUpperCase()}</span><div><i style={{width:`${Math.min(100,x.count*10)}%`}}/></div><b>{x.count}</b></div>)}</Card><Card className="notice"><WalletCards/><div><b>Sobre tus cifras</b><p>Registra la decisión para comparar recomendaciones. Los resultados reales pueden diferir por tráfico, propinas y otros costos.</p></div></Card></>}
-function Settings({settings,save}:{settings:VehicleSettings,save:(s:VehicleSettings)=>void}){const[s,setS]=useState(settings);useEffect(()=>setS(settings),[settings]);const field=(k:keyof VehicleSettings,v:string|number|boolean)=>setS({...s,[k]:v});return <><Header title="Configuración" sub="Valores iniciales editables; no son datos universales."/><Card><h2>Vehículo y combustible</h2><div className="form-grid"><label><FieldTitle label="Nombre del conductor" help="Nombre opcional para personalizar la aplicación; no cambia los cálculos."/><input value={s.name} onChange={e=>field('name',e.target.value)}/></label><label><FieldTitle label="País" required help="Define el contexto de moneda y precios. Actualmente optimizado para México."/><input value={s.country} onChange={e=>field('country',e.target.value)}/></label><label><FieldTitle label="Moneda" required unit="MXN" help="Moneda usada para tarifas, costos y ganancias."/><input value={s.currency} onChange={e=>field('currency',e.target.value)}/></label><label><FieldTitle label="Tipo de combustible" required help="Combustible que utiliza el vehículo, por ejemplo gasolina, diésel o híbrido."/><input value={s.fuelType} onChange={e=>field('fuelType',e.target.value)}/></label>{([['fuelPricePerLiter','Precio por litro'],['fuelEfficiencyKmPerLiter','Rendimiento km/l'],['maintenanceCostPerKm','Mantenimiento / km'],['additionalCostPerKm','Costo adicional / km'],['contingencyPercent','Imprevistos %'],['extraMinutes','Minutos extra']] as const).map(([k,l])=><label key={k}><FieldTitle label={l} {...SETTINGS_HELP[k]}/><span className="input-with-unit"><input type="number" inputMode="decimal" value={s[k] as number} onChange={e=>field(k,Number(e.target.value))}/><b>{SETTINGS_HELP[k].unit}</b></span></label>)}</div></Card><Card><h2>Metas de rentabilidad</h2><div className="form-grid"><label><FieldTitle label="Neto mínimo por km" required unit="MXN/km" help="Ganancia neta mínima que deseas conservar por cada kilómetro total."/><span className="input-with-unit"><input type="number" value={s.thresholds.minNetPerKm} onChange={e=>setS({...s,thresholds:{...s.thresholds,minNetPerKm:Number(e.target.value)}})}/><b>MXN/km</b></span></label><label><FieldTitle label="Neto mínimo por hora" required unit="MXN/h" help="Ganancia neta mínima deseada por cada hora total del viaje."/><span className="input-with-unit"><input type="number" value={s.thresholds.minNetPerHour} onChange={e=>setS({...s,thresholds:{...s.thresholds,minNetPerHour:Number(e.target.value)}})}/><b>MXN/h</b></span></label></div><label className="toggle"><input type="checkbox" checked={s.includePickupDistance} onChange={e=>field('includePickupDistance',e.target.checked)}/><span>Incluir distancia de recogida <span className="inline-help" title="Suma los kilómetros hasta el pasajero al costo y la rentabilidad."><Info size={16}/></span></span></label><label className="toggle"><input type="checkbox" checked={s.includePickupTime} onChange={e=>field('includePickupTime',e.target.checked)}/><span>Incluir tiempo de recogida <span className="inline-help" title="Suma los minutos hasta el pasajero al cálculo por hora."><Info size={16}/></span></span></label></Card><Card><h2>Sincronización con Atajos</h2><p className="muted">Copia este código en el campo <code>deviceId</code> de ambos Atajos. Así los análisis enviados a la API aparecerán en este historial.</p><label><FieldTitle label="Código de sincronización" required help="Vincula la configuración, el Atajo y el historial remoto. Debe coincidir con deviceId."/><input readOnly value={s.syncCode}/></label><button className="secondary" onClick={()=>navigator.clipboard.writeText(s.syncCode)}>Copiar código</button></Card><Card><h2>¿Cómo se calcula el costo?</h2><p className="muted">Combustible = km totales ÷ rendimiento × precio por litro. Se suman mantenimiento por km, costo adicional por km e imprevistos. Ganancia neta estimada = tarifa ofrecida − todos esos costos.</p></Card><button onClick={()=>save(s)}>Guardar configuración</button><button className="danger" onClick={async()=>{if(confirm('¿Borrar todo el historial?'))await repository.clear()}}>Borrar historial</button></>}
-function Shortcut({settings}:{settings:VehicleSettings}){return <><Header title="Configurar Atajo" sub="Crea uno para Uber y otro para DiDi. Hazlo con el auto estacionado."/><Card className="steps"><h2>Atajo “Analizar Uber”</h2><ol><li>Abre <b>Atajos</b>, toca <b>+</b> y nómbralo “Analizar Uber”.</li><li>Añade <b>Abrir app</b> y selecciona Uber.</li><li>Añade <b>Esperar</b> con <b>1 segundo</b>.</li><li>Añade <b>Tomar captura de pantalla</b>.</li><li>Añade <b>Extraer texto de la imagen</b>. La entrada debe ser “Captura de pantalla”.</li><li>Añade <b>Obtener contenido de URL</b> y pega <code>https://convieneapp.pages.dev/api/analyze?format=text</code>.</li><li>En “Mostrar más”: método <b>POST</b>, cuerpo <b>JSON</b>. Agrega los cuatro campos de abajo. En <code>text</code>, inserta la variable azul “Texto de la imagen”.</li><li>Añade <b>Mostrar notificación</b>. Como texto selecciona la variable “Contenido de URL”.</li><li>Opcional: añade <b>Mostrar resultado</b> con la misma variable.</li></ol><pre>{`text      = [variable Texto de la imagen]
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { NavLink, Route, Routes, useNavigate } from "react-router-dom";
+import {
+  BarChart3,
+  Bell,
+  Camera,
+  CarFront,
+  CheckCircle2,
+  Clock3,
+  History as HistoryIcon,
+  Home,
+  ImagePlus,
+  Info,
+  Settings as Cog,
+  Share2,
+  Sparkles,
+  WalletCards,
+} from "lucide-react";
+import type {
+  AnalysisHistoryItem,
+  OCRParseResult,
+  Platform,
+  TripAnalysis,
+  VehicleSettings,
+} from "./types";
+import { DEFAULT_SETTINGS } from "./domain/settings";
+import { parseOCR } from "./domain/parsers";
+import { analyzeTrip, titles } from "./domain/calculator";
+import { repository } from "./data/repository";
+import {
+  enableNotifications,
+  notificationsSupported,
+  notifyAnalysis,
+} from "./notifications";
+import { preprocessFareForOCR, preprocessForOCR } from "./ocr/imagePreprocess";
+const money = (v = 0) =>
+  new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: "MXN",
+    maximumFractionDigits: 0,
+  }).format(v);
+const num = (v = 0) => v.toFixed(1);
+async function syncRemoteSettings(settings: VehicleSettings) {
+  if (!settings.syncCode) return;
+  const response = await fetch("/api/settings", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ deviceId: settings.syncCode, settings }),
+  });
+  if (!response.ok) throw new Error("No se pudo sincronizar la configuración.");
+}
+const statusLabel = {
+  profitable: "Rentable",
+  regular: "Regular",
+  unprofitable: "No rentable",
+  insufficient: "Incompleto",
+};
+function Card({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return <section className={`card ${className}`}>{children}</section>;
+}
+function App() {
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [history, setHistory] = useState<AnalysisHistoryItem[]>([]);
+  const knownRemote = useRef<Set<string> | null>(null);
+  const refresh = useCallback(async () => {
+    const local = await repository.history(),
+      current = await repository.settings();
+    let remote: AnalysisHistoryItem[] = [];
+    if (current.syncCode)
+      try {
+        const response = await fetch(
+          "/api/history?deviceId=" + encodeURIComponent(current.syncCode),
+        );
+        if (response.ok)
+          remote =
+            ((await response.json()) as { items: AnalysisHistoryItem[] })
+              .items || [];
+      } catch {
+        /* conserva el historial local sin conexión */
+      }
+    if (knownRemote.current === null)
+      knownRemote.current = new Set(remote.map((item) => item.id));
+    else {
+      const newcomers = remote.filter(
+        (item) => !knownRemote.current!.has(item.id),
+      );
+      for (const item of newcomers) void notifyAnalysis(item.analysis);
+      for (const item of remote) knownRemote.current.add(item.id);
+    }
+    const unique = new Map(
+      [...remote, ...local].map((item) => [item.id, item]),
+    );
+    setHistory(
+      [...unique.values()].sort((a, b) =>
+        b.createdAt.localeCompare(a.createdAt),
+      ),
+    );
+  }, []);
+  useEffect(() => {
+    repository.settings().then((current) => {
+      setSettings(current);
+      void syncRemoteSettings(current).catch(() => undefined);
+      void refresh();
+    });
+  }, [refresh]);
+  useEffect(() => {
+    const update = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    window.addEventListener("focus", update);
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      window.removeEventListener("focus", update);
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, [refresh]);
+  const saveSettings = async (s: VehicleSettings) => {
+    setSettings(s);
+    await repository.saveSettings(s);
+    await syncRemoteSettings(s);
+    await refresh();
+  };
+  return (
+    <div className="app">
+      <main>
+        <Routes>
+          <Route path="/" element={<Dashboard items={history} />} />
+          <Route
+            path="/analyze"
+            element={<Analyzer settings={settings} refresh={refresh} />}
+          />
+          <Route
+            path="/history"
+            element={<History items={history} refresh={refresh} />}
+          />
+          <Route path="/stats" element={<Stats items={history} />} />
+          <Route
+            path="/settings"
+            element={
+              <SettingsWithNotice settings={settings} save={saveSettings} />
+            }
+          />
+          <Route path="/shortcut" element={<Shortcut settings={settings} />} />
+        </Routes>
+      </main>
+      <Nav />
+    </div>
+  );
+}
+function Nav() {
+  return (
+    <nav className="nav" aria-label="Navegación principal">
+      {[
+        [Home, "/", "Inicio"],
+        [Sparkles, "/analyze", "Analizar"],
+        [HistoryIcon, "/history", "Historial"],
+        [BarChart3, "/stats", "Datos"],
+        [Cog, "/settings", "Ajustes"],
+      ].map(([Icon, to, label]) => (
+        <NavLink key={to as string} to={to as string} end={to === "/"}>
+          <Icon size={22} />
+          <span>{label as string}</span>
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
+function Header({
+  eyebrow = "¿CONVIENE?",
+  title,
+  sub,
+}: {
+  eyebrow?: string;
+  title: string;
+  sub?: string;
+}) {
+  return (
+    <header>
+      <p className="eyebrow">{eyebrow}</p>
+      <h1>{title}</h1>
+      {sub && <p className="muted">{sub}</p>}
+    </header>
+  );
+}
+type FieldHelp = { required?: boolean; unit?: string; help: string };
+function FieldTitle({
+  label,
+  required = false,
+  unit,
+  help,
+}: { label: string } & FieldHelp) {
+  const [open, setOpen] = useState(false),
+    id = useId();
+  useEffect(() => {
+    const close = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== id) setOpen(false);
+    };
+    window.addEventListener("conviene-help-open", close);
+    return () => window.removeEventListener("conviene-help-open", close);
+  }, [id]);
+  const toggle = () => {
+    if (!open)
+      window.dispatchEvent(
+        new CustomEvent("conviene-help-open", { detail: id }),
+      );
+    setOpen((v) => !v);
+  };
+  return (
+    <span className="field-title">
+      <span>
+        {label}
+        <small className={required ? "required" : "optional"}>
+          {required ? "Obligatorio" : "Opcional"}
+        </small>
+        {unit && <b className="unit">{unit}</b>}
+      </span>
+      <button
+        type="button"
+        className="info-tip"
+        aria-label={`Información sobre ${label}`}
+        aria-expanded={open}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          toggle();
+        }}
+      >
+        <Info size={17} />
+      </button>
+      {open &&
+        createPortal(
+          <div
+            className="help-layer"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setOpen(false);
+            }}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Información sobre ${label}`}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <b>{label}</b>
+              <p>{help}</p>
+              <button type="button" onClick={() => setOpen(false)}>
+                Entendido
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </span>
+  );
+}
+const SETTINGS_HELP: Record<string, FieldHelp> = {
+  fuelPricePerLiter: {
+    required: true,
+    unit: "MXN/L",
+    help: "Precio actual que pagas por cada litro de combustible.",
+  },
+  fuelEfficiencyKmPerLiter: {
+    required: true,
+    unit: "km/L",
+    help: "Kilómetros reales que recorre tu vehículo con un litro. Usa un promedio urbano.",
+  },
+  maintenanceCostPerKm: {
+    required: true,
+    unit: "MXN/km",
+    help: "Reserva por kilómetro para servicios, llantas, frenos y desgaste.",
+  },
+  additionalCostPerKm: {
+    unit: "MXN/km",
+    help: "Otros costos variables por kilómetro, como lavado, estacionamiento o comisiones.",
+  },
+  contingencyPercent: {
+    unit: "%",
+    help: "Margen adicional aplicado a los costos para cubrir imprevistos.",
+  },
+  extraMinutes: {
+    unit: "min",
+    help: "Tiempo extra estimado por semáforos, espera o tráfico no contemplado.",
+  },
+};
+function Dashboard({ items }: { items: AnalysisHistoryItem[] }) {
+  const [permission, setPermission] = useState(
+    typeof Notification === "undefined" ? "default" : Notification.permission,
+  );
+  const today = new Date().toDateString(),
+    daily = items.filter((x) => new Date(x.createdAt).toDateString() === today),
+    net = daily.reduce(
+      (a, x) => a + (x.analysis.metrics?.estimatedNetProfit || 0),
+      0,
+    ),
+    gross = daily.reduce((a, x) => a + (x.analysis.parse.offeredFare || 0), 0);
+  const activate = async () => setPermission(await enableNotifications());
+  return (
+    <>
+      <Header
+        title="Decide en segundos."
+        sub="Rentabilidad estimada antes de aceptar un viaje."
+      />
+      <NavLink className="hero-button" to="/analyze">
+        <Sparkles /> Analizar solicitud
+      </NavLink>
+      <button
+        className="secondary notification-button"
+        onClick={activate}
+        disabled={!notificationsSupported() || permission === "granted"}
+      >
+        <Bell />
+        {permission === "granted"
+          ? "Notificaciones activadas"
+          : permission === "denied"
+            ? "Permiso de notificaciones bloqueado"
+            : "Activar notificaciones"}
+      </button>
+      <div className="shortcut-state">
+        <span className="pulse" />
+        Atajo de iOS listo para configurar{" "}
+        <NavLink to="/shortcut">Ver guía</NavLink>
+      </div>
+      <h2>Resumen de hoy</h2>
+      <div className="metric-grid">
+        <Card>
+          <small>Solicitudes</small>
+          <strong>{daily.length}</strong>
+        </Card>
+        <Card>
+          <small>Recomendadas</small>
+          <strong>
+            {
+              daily.filter((x) => x.analysis.classification === "profitable")
+                .length
+            }
+          </strong>
+        </Card>
+        <Card>
+          <small>Bruto ofrecido</small>
+          <strong>{money(gross)}</strong>
+        </Card>
+        <Card className="accent">
+          <small>Neto estimado</small>
+          <strong>{money(net)}</strong>
+        </Card>
+      </div>
+      <Card className="notice">
+        <CarFront />
+        <div>
+          <b>Primero la seguridad</b>
+          <p>
+            Configura y prueba el Atajo con el vehículo estacionado. Nunca
+            interactúes mientras conduces.
+          </p>
+        </div>
+      </Card>
+    </>
+  );
+}
+function Analyzer({
+  settings,
+  refresh,
+}: {
+  settings: VehicleSettings;
+  refresh: () => void;
+}) {
+  const nav = useNavigate(),
+    [text, setText] = useState(""),
+    [platform, setPlatform] = useState<"auto" | Platform>("auto"),
+    [parsed, setParsed] = useState<OCRParseResult>(),
+    [analysis, setAnalysis] = useState<TripAnalysis>(),
+    [image, setImage] = useState<string>(),
+    [busy, setBusy] = useState(false),
+    [ocrError, setOcrError] = useState("");
+  const run = (p = parsed || parseOCR(text, platform)) => {
+    const next = analyzeTrip(p, settings);
+    setParsed(p);
+    setAnalysis(next);
+    void notifyAnalysis(next);
+  };
+  const change = (k: keyof OCRParseResult, v: string) =>
+    setParsed((p) => (p ? { ...p, [k]: v === "" ? undefined : Number(v) } : p));
+  const save = async () => {
+    if (!analysis) return;
+    await repository.save({
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      analysis,
+      driverDecision: "pending",
+    });
+    refresh();
+    nav("/history");
+  };
+  const ocr = async (f: File) => {
+    if (image) URL.revokeObjectURL(image);
+    setImage(URL.createObjectURL(f));
+    setBusy(true);
+    setOcrError("");
+    try {
+      const prepared = await preprocessForOCR(f),
+        farePrepared = await preprocessFareForOCR(f);
+      const { createWorker, PSM } = await import("tesseract.js");
+      const w = await createWorker("spa");
+      await w.setParameters({
+        preserve_interword_spaces: "1",
+        user_defined_dpi: "300",
+        tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
+      });
+      const { data } = await w.recognize(prepared);
+      await w.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT });
+      const { data: fareData } = await w.recognize(farePrepared);
+      await w.terminate();
+      const combined = (fareData.text + "\n" + data.text).trim();
+      setText(combined);
+      if (!combined)
+        setOcrError(
+          "No se detectó texto. Prueba una captura más nítida o pega el texto de Atajos.",
+        );
+    } catch {
+      setOcrError(
+        "No se pudo reconocer la imagen. Revisa tu conexión e inténtalo de nuevo.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  const file = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) void ocr(f);
+    e.target.value = "";
+  };
+  return (
+    <>
+      <Header
+        title="Analizar solicitud"
+        sub="Pega el texto de Atajos o usa una captura."
+      />
+      <Card>
+        <label>
+          Plataforma
+          <select
+            value={platform}
+            onChange={(e) => setPlatform(e.target.value as typeof platform)}
+          >
+            <option value="auto">Detectar automáticamente</option>
+            <option value="uber">Uber</option>
+            <option value="didi">DiDi</option>
+            <option value="other">Otra</option>
+          </select>
+        </label>
+        <label>
+          Texto extraído
+          <textarea
+            rows={7}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={"Ejemplo:\n$121.93\n7 min (1.6 km)\n27 min (10.7 km)"}
+          />
+        </label>
+        <div className="image-actions">
+          <label className="upload">
+            <ImagePlus /> {busy ? "Procesando…" : "Elegir de galería"}
+            <input
+              type="file"
+              accept="image/*"
+              disabled={busy}
+              onChange={file}
+            />
+          </label>
+          <label className="upload">
+            <Camera /> Tomar foto
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              disabled={busy}
+              onChange={file}
+            />
+          </label>
+        </div>
+        {ocrError && (
+          <p className="error" role="alert">
+            {ocrError}
+          </p>
+        )}
+        {image && (
+          <div className="preview">
+            <img src={image} alt="Vista previa de la captura" />
+            <button
+              className="secondary"
+              onClick={() => {
+                URL.revokeObjectURL(image);
+                setImage(undefined);
+              }}
+            >
+              Eliminar imagen
+            </button>
+          </div>
+        )}
+        <button onClick={() => run()} disabled={!text.trim() || busy}>
+          Analizar ahora
+        </button>
+      </Card>
+      {parsed && (
+        <Card>
+          <h2>Datos detectados</h2>
+          <div className="form-grid">
+            {(
+              [
+                ["offeredFare", "Tarifa"],
+                ["pickupDistanceKm", "Recogida km"],
+                ["tripDistanceKm", "Viaje km"],
+                ["pickupDurationMin", "Recogida min"],
+                ["tripDurationMin", "Viaje min"],
+              ] as const
+            ).map(([k, l]) => (
+              <label key={k}>
+                {l}
+                <input
+                  inputMode="decimal"
+                  type="number"
+                  value={parsed[k] ?? ""}
+                  onChange={(e) => change(k, e.target.value)}
+                />
+              </label>
+            ))}
+          </div>
+          <button className="secondary" onClick={() => run(parsed)}>
+            Calcular nuevamente
+          </button>
+        </Card>
+      )}
+      {analysis && <Result analysis={analysis} save={save} />}
+    </>
+  );
+}
+function Result({
+  analysis,
+  save,
+}: {
+  analysis: TripAnalysis;
+  save: () => void;
+}) {
+  const m = analysis.metrics,
+    p = analysis.parse;
+  return (
+    <Card className={`result ${analysis.classification}`}>
+      <span className="pill">{statusLabel[analysis.classification]}</span>
+      <h2>{titles[analysis.classification]}</h2>
+      {m ? (
+        <>
+          <div className="result-hero">
+            <small>Neto estimado</small>
+            <strong>{money(m.estimatedNetProfit)}</strong>
+            <span>
+              {money(m.netPerKm)}/km · {money(m.netPerHour)}/h
+            </span>
+          </div>
+          <div className="details">
+            {[
+              ["Tarifa", money(p.offeredFare)],
+              ["Distancia total", `${num(m.totalDistanceKm)} km`],
+              ["Tiempo total", `${Math.round(m.totalDurationMin)} min`],
+              ["Bruto por km", money(m.grossPerKm)],
+              ["Bruto por hora", money(m.grossPerHour)],
+              ["Combustible", money(m.fuelCost)],
+              ["Mantenimiento", money(m.maintenanceCost)],
+              ["Costo total", money(m.estimatedTotalCost)],
+            ].map(([l, v]) => (
+              <div key={l}>
+                <span>{l}</span>
+                <b>{v}</b>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p>Faltan: {analysis.missingFields.join(", ")}</p>
+      )}
+      <ul>
+        {analysis.reasons.map((r) => (
+          <li key={r}>{r}</li>
+        ))}
+      </ul>
+      <p className="disclaimer">
+        Estimación orientativa; no representa ingresos reales ni garantiza el
+        resultado.
+      </p>
+      <button onClick={save} disabled={!m}>
+        Guardar análisis
+      </button>
+    </Card>
+  );
+}
+function History({
+  items,
+  refresh,
+}: {
+  items: AnalysisHistoryItem[];
+  refresh: () => void;
+}) {
+  const [q, setQ] = useState(""),
+    [result, setResult] = useState("all");
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+  const filtered = items.filter(
+    (x) =>
+      (result === "all" || x.analysis.classification === result) &&
+      `${x.analysis.parse.platform} ${x.analysis.parse.offeredFare}`.includes(
+        q.toLowerCase(),
+      ),
+  );
+  const exportCsv = () => {
+    const rows = [
+      [
+        "Fecha",
+        "Plataforma",
+        "Tarifa",
+        "Neto estimado",
+        "Resultado",
+        "Decisión",
+      ],
+      ...filtered.map((x) => [
+        x.createdAt,
+        x.analysis.parse.platform,
+        x.analysis.parse.offeredFare || "",
+        x.analysis.metrics?.estimatedNetProfit || "",
+        x.analysis.classification,
+        x.driverDecision,
+      ]),
+    ];
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(
+      new Blob([rows.map((r) => r.join(",")).join("\n")], { type: "text/csv" }),
+    );
+    a.download = "conviene-historial.csv";
+    a.click();
+  };
+  return (
+    <>
+      <Header
+        title="Historial"
+        sub={`${items.length} análisis locales y sincronizados.`}
+      />
+      <div className="filters">
+        <input
+          placeholder="Buscar"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <select value={result} onChange={(e) => setResult(e.target.value)}>
+          <option value="all">Todos</option>
+          <option value="profitable">Rentables</option>
+          <option value="regular">Regulares</option>
+          <option value="unprofitable">No rentables</option>
+        </select>
+      </div>
+      <button
+        className="secondary"
+        onClick={exportCsv}
+        disabled={!filtered.length}
+      >
+        Exportar CSV
+      </button>
+      {!filtered.length ? (
+        <Card className="empty">
+          <Clock3 />
+          <h2>Aún no hay análisis</h2>
+          <p>Los viajes que guardes aparecerán aquí.</p>
+        </Card>
+      ) : (
+        <div className="list">
+          {filtered.map((x) => (
+            <Card
+              className={`history-item ${x.analysis.classification}`}
+              key={x.id}
+            >
+              <div>
+                <span className="pill">
+                  {statusLabel[x.analysis.classification]}
+                </span>
+                <h3>
+                  {x.analysis.parse.platform.toUpperCase()} ·{" "}
+                  {money(x.analysis.parse.offeredFare)}
+                </h3>
+                <small>{new Date(x.createdAt).toLocaleString("es-MX")}</small>
+              </div>
+              <div className="right">
+                <b>{money(x.analysis.metrics?.estimatedNetProfit)} neto</b>
+                <select
+                  aria-label="Decisión del conductor"
+                  value={x.driverDecision}
+                  onChange={async (e) => {
+                    await repository.save({
+                      ...x,
+                      driverDecision: e.target
+                        .value as AnalysisHistoryItem["driverDecision"],
+                    });
+                    refresh();
+                  }}
+                >
+                  <option value="pending">Sin decisión</option>
+                  <option value="accepted">Aceptado</option>
+                  <option value="rejected">Rechazado</option>
+                </select>
+                <button
+                  className="danger-link"
+                  onClick={async () => {
+                    if (confirm("¿Eliminar este análisis?")) {
+                      await repository.remove(x.id);
+                      refresh();
+                    }
+                  }}
+                >
+                  Eliminar
+                </button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+function Stats({ items }: { items: AnalysisHistoryItem[] }) {
+  const done = items.filter((x) => x.analysis.metrics),
+    avg = (f: (x: AnalysisHistoryItem) => number) =>
+      done.length ? done.reduce((a, x) => a + f(x), 0) / done.length : 0;
+  const platforms = ["uber", "didi"].map((p) => ({
+    p,
+    count: done.filter((x) => x.analysis.parse.platform === p).length,
+    net: avg((x) =>
+      x.analysis.parse.platform === p ? x.analysis.metrics?.netPerKm || 0 : 0,
+    ),
+  }));
+  return (
+    <>
+      <Header
+        title="Estadísticas"
+        sub="Estimaciones guardadas; no son ganancias reales."
+      />
+      <div className="metric-grid">
+        <Card>
+          <small>Analizadas</small>
+          <strong>{items.length}</strong>
+        </Card>
+        <Card>
+          <small>Recomendables</small>
+          <strong>
+            {items.length
+              ? Math.round(
+                  (items.filter(
+                    (x) => x.analysis.classification === "profitable",
+                  ).length /
+                    items.length) *
+                    100,
+                )
+              : 0}
+            %
+          </strong>
+        </Card>
+        <Card>
+          <small>Aceptadas</small>
+          <strong>
+            {items.length
+              ? Math.round(
+                  (items.filter((x) => x.driverDecision === "accepted").length /
+                    items.length) *
+                    100,
+                )
+              : 0}
+            %
+          </strong>
+        </Card>
+        <Card>
+          <small>Neto prom./km</small>
+          <strong>
+            {money(avg((x) => x.analysis.metrics?.netPerKm || 0))}
+          </strong>
+        </Card>
+        <Card>
+          <small>Bruto prom./hora</small>
+          <strong>
+            {money(avg((x) => x.analysis.metrics?.grossPerHour || 0))}
+          </strong>
+        </Card>
+        <Card>
+          <small>Neto prom./hora</small>
+          <strong>
+            {money(avg((x) => x.analysis.metrics?.netPerHour || 0))}
+          </strong>
+        </Card>
+      </div>
+      <Card>
+        <h2>Comparación por plataforma</h2>
+        {platforms.map((x) => (
+          <div className="bar-row" key={x.p}>
+            <span>{x.p.toUpperCase()}</span>
+            <div>
+              <i style={{ width: `${Math.min(100, x.count * 10)}%` }} />
+            </div>
+            <b>{x.count}</b>
+          </div>
+        ))}
+      </Card>
+      <Card className="notice">
+        <WalletCards />
+        <div>
+          <b>Sobre tus cifras</b>
+          <p>
+            Registra la decisión para comparar recomendaciones. Los resultados
+            reales pueden diferir por tráfico, propinas y otros costos.
+          </p>
+        </div>
+      </Card>
+    </>
+  );
+}
+function SettingsWithNotice({settings,save}:{settings:VehicleSettings;save:(s:VehicleSettings)=>Promise<void>}) {
+  const [notice,setNotice]=useState<"saved"|"error">();
+  useEffect(()=>{if(!notice)return;const timer=setTimeout(()=>setNotice(undefined),3200);return()=>clearTimeout(timer)},[notice]);
+  const saveWithNotice=async(s:VehicleSettings)=>{try{await save(s);setNotice("saved")}catch{setNotice("error")}};
+  return <><Settings settings={settings} save={saveWithNotice}/>{notice&&<div className={`settings-toast ${notice}`} role="status" aria-live="polite">{notice==="saved"?<><CheckCircle2/> Ajustes guardados y sincronizados</>:"Se guardaron en el celular, pero no se pudieron sincronizar."}</div>}</>;
+}
+
+function Settings({
+  settings,
+  save,
+}: {
+  settings: VehicleSettings;
+  save: (s: VehicleSettings) => void;
+}) {
+  const [s, setS] = useState(settings);
+  useEffect(() => setS(settings), [settings]);
+  const field = (k: keyof VehicleSettings, v: string | number | boolean) =>
+    setS({ ...s, [k]: v });
+  return (
+    <>
+      <Header
+        title="Configuración"
+        sub="Valores iniciales editables; no son datos universales."
+      />
+      <Card>
+        <h2>Vehículo y combustible</h2>
+        <div className="form-grid">
+          <label>
+            <FieldTitle
+              label="Nombre del conductor"
+              help="Nombre opcional para personalizar la aplicación; no cambia los cálculos."
+            />
+            <input
+              value={s.name}
+              onChange={(e) => field("name", e.target.value)}
+            />
+          </label>
+          <label>
+            <FieldTitle
+              label="País"
+              required
+              help="Define el contexto de moneda y precios. Actualmente optimizado para México."
+            />
+            <input
+              value={s.country}
+              onChange={(e) => field("country", e.target.value)}
+            />
+          </label>
+          <label>
+            <FieldTitle
+              label="Moneda"
+              required
+              unit="MXN"
+              help="Moneda usada para tarifas, costos y ganancias."
+            />
+            <input
+              value={s.currency}
+              onChange={(e) => field("currency", e.target.value)}
+            />
+          </label>
+          <label>
+            <FieldTitle
+              label="Tipo de combustible"
+              required
+              help="Combustible que utiliza el vehículo, por ejemplo gasolina, diésel o híbrido."
+            />
+            <input
+              value={s.fuelType}
+              onChange={(e) => field("fuelType", e.target.value)}
+            />
+          </label>
+          {(
+            [
+              ["fuelPricePerLiter", "Precio por litro"],
+              ["fuelEfficiencyKmPerLiter", "Rendimiento km/l"],
+              ["maintenanceCostPerKm", "Mantenimiento / km"],
+              ["additionalCostPerKm", "Costo adicional / km"],
+              ["contingencyPercent", "Imprevistos %"],
+              ["extraMinutes", "Minutos extra"],
+            ] as const
+          ).map(([k, l]) => (
+            <label key={k}>
+              <FieldTitle label={l} {...SETTINGS_HELP[k]} />
+              <span className="input-with-unit">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={s[k] as number}
+                  onChange={(e) => field(k, Number(e.target.value))}
+                />
+                <b>{SETTINGS_HELP[k].unit}</b>
+              </span>
+            </label>
+          ))}
+        </div>
+      </Card>
+      <Card>
+        <h2>Metas de rentabilidad</h2>
+        <div className="form-grid">
+          <label>
+            <FieldTitle
+              label="Neto mínimo por km"
+              required
+              unit="MXN/km"
+              help="Ganancia neta mínima que deseas conservar por cada kilómetro total."
+            />
+            <span className="input-with-unit">
+              <input
+                type="number"
+                value={s.thresholds.minNetPerKm}
+                onChange={(e) =>
+                  setS({
+                    ...s,
+                    thresholds: {
+                      ...s.thresholds,
+                      minNetPerKm: Number(e.target.value),
+                    },
+                  })
+                }
+              />
+              <b>MXN/km</b>
+            </span>
+          </label>
+          <label>
+            <FieldTitle
+              label="Neto mínimo por hora"
+              required
+              unit="MXN/h"
+              help="Ganancia neta mínima deseada por cada hora total del viaje."
+            />
+            <span className="input-with-unit">
+              <input
+                type="number"
+                value={s.thresholds.minNetPerHour}
+                onChange={(e) =>
+                  setS({
+                    ...s,
+                    thresholds: {
+                      ...s.thresholds,
+                      minNetPerHour: Number(e.target.value),
+                    },
+                  })
+                }
+              />
+              <b>MXN/h</b>
+            </span>
+          </label>
+        </div>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={s.includePickupDistance}
+            onChange={(e) => field("includePickupDistance", e.target.checked)}
+          />
+          <span>
+            Incluir distancia de recogida{" "}
+            <span
+              className="inline-help"
+              title="Suma los kilómetros hasta el pasajero al costo y la rentabilidad."
+            >
+              <Info size={16} />
+            </span>
+          </span>
+        </label>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={s.includePickupTime}
+            onChange={(e) => field("includePickupTime", e.target.checked)}
+          />
+          <span>
+            Incluir tiempo de recogida{" "}
+            <span
+              className="inline-help"
+              title="Suma los minutos hasta el pasajero al cálculo por hora."
+            >
+              <Info size={16} />
+            </span>
+          </span>
+        </label>
+      </Card>
+      <Card>
+        <h2>Sincronización con Atajos</h2>
+        <p className="muted">
+          Copia este código en el campo <code>deviceId</code> de ambos Atajos.
+          Así los análisis enviados a la API aparecerán en este historial.
+        </p>
+        <label>
+          <FieldTitle
+            label="Código de sincronización"
+            required
+            help="Vincula la configuración, el Atajo y el historial remoto. Debe coincidir con deviceId."
+          />
+          <input readOnly value={s.syncCode} />
+        </label>
+        <button
+          className="secondary"
+          onClick={() => navigator.clipboard.writeText(s.syncCode)}
+        >
+          Copiar código
+        </button>
+      </Card>
+      <Card>
+        <h2>¿Cómo se calcula el costo?</h2>
+        <p className="muted">
+          Combustible = km totales ÷ rendimiento × precio por litro. Se suman
+          mantenimiento por km, costo adicional por km e imprevistos. Ganancia
+          neta estimada = tarifa ofrecida − todos esos costos.
+        </p>
+      </Card>
+      <button onClick={() => save(s)}>Guardar configuración</button>
+      <button
+        className="danger"
+        onClick={async () => {
+          if (confirm("¿Borrar todo el historial?")) await repository.clear();
+        }}
+      >
+        Borrar historial
+      </button>
+    </>
+  );
+}
+function Shortcut({ settings }: { settings: VehicleSettings }) {
+  return (
+    <>
+      <Header
+        title="Configurar Atajo"
+        sub="Crea uno para Uber y otro para DiDi. Hazlo con el auto estacionado."
+      />
+      <Card className="steps">
+        <h2>Atajo “Analizar Uber”</h2>
+        <ol>
+          <li>
+            Abre <b>Atajos</b>, toca <b>+</b> y nómbralo “Analizar Uber”.
+          </li>
+          <li>
+            Añade <b>Abrir app</b> y selecciona Uber.
+          </li>
+          <li>
+            Añade <b>Esperar</b> con <b>1 segundo</b>.
+          </li>
+          <li>
+            Añade <b>Tomar captura de pantalla</b>.
+          </li>
+          <li>
+            Añade <b>Extraer texto de la imagen</b>. La entrada debe ser
+            “Captura de pantalla”.
+          </li>
+          <li>
+            Añade <b>Obtener contenido de URL</b> y pega{" "}
+            <code>https://convieneapp.pages.dev/api/analyze?format=text</code>.
+          </li>
+          <li>
+            En “Mostrar más”: método <b>POST</b>, cuerpo <b>JSON</b>. Agrega los
+            cuatro campos de abajo. En <code>text</code>, inserta la variable
+            azul “Texto de la imagen”.
+          </li>
+          <li>
+            Añade <b>Mostrar notificación</b>. Como texto selecciona la variable
+            “Contenido de URL”.
+          </li>
+          <li>
+            Opcional: añade <b>Mostrar resultado</b> con la misma variable.
+          </li>
+        </ol>
+        <pre>{`text      = [variable Texto de la imagen]
 platform  = uber
 token     = [token secreto]
-deviceId  = ${settings.syncCode||'[código de Ajustes]'}`}</pre></Card><Card><h2>Crear el de DiDi</h2><p>Duplica el Atajo. Cambia <b>Abrir app</b> a DiDi y <code>platform</code> a <code>didi</code>. La URL y el token son iguales.</p></Card><Card><h2>Añadir al Centro de control</h2><ol><li>Abre el Centro de control y mantén pulsado un espacio vacío.</li><li>Toca <b>Añadir un control</b> → <b>Atajo</b>.</li><li>Elige “Analizar Uber”. Repite para DiDi.</li></ol><p>“No autorizado” indica un token incorrecto. “Revisa los datos” indica que OCR no encontró tarifa, distancia o tiempo.</p></Card><Card className="notice"><Share2/><div><b>Dos tipos de notificación</b><p>El botón de Inicio activa avisos para análisis hechos en la PWA. Para solicitudes analizadas desde Uber o DiDi, “Mostrar notificación” del Atajo es la opción nativa más confiable en iPhone.</p></div></Card></>}
+deviceId  = ${settings.syncCode || "[código de Ajustes]"}`}</pre>
+      </Card>
+      <Card>
+        <h2>Crear el de DiDi</h2>
+        <p>
+          Duplica el Atajo. Cambia <b>Abrir app</b> a DiDi y{" "}
+          <code>platform</code> a <code>didi</code>. La URL y el token son
+          iguales.
+        </p>
+      </Card>
+      <Card>
+        <h2>Añadir al Centro de control</h2>
+        <ol>
+          <li>Abre el Centro de control y mantén pulsado un espacio vacío.</li>
+          <li>
+            Toca <b>Añadir un control</b> → <b>Atajo</b>.
+          </li>
+          <li>Elige “Analizar Uber”. Repite para DiDi.</li>
+        </ol>
+        <p>
+          “No autorizado” indica un token incorrecto. “Revisa los datos” indica
+          que OCR no encontró tarifa, distancia o tiempo.
+        </p>
+      </Card>
+      <Card className="notice">
+        <Share2 />
+        <div>
+          <b>Dos tipos de notificación</b>
+          <p>
+            El botón de Inicio activa avisos para análisis hechos en la PWA.
+            Para solicitudes analizadas desde Uber o DiDi, “Mostrar
+            notificación” del Atajo es la opción nativa más confiable en iPhone.
+          </p>
+        </div>
+      </Card>
+    </>
+  );
+}
 export default App;
