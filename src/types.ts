@@ -8,6 +8,6 @@ export interface OCRParseResult{platform:Platform;offeredFare?:number;pickupDist
 export interface TripMetrics{totalDistanceKm:number;totalDurationMin:number;fuelLiters:number;fuelCost:number;maintenanceCost:number;additionalCost:number;contingencyCost:number;estimatedTotalCost:number;estimatedNetProfit:number;grossPerKm:number;netPerKm:number;grossPerHour:number;netPerHour:number}
 export interface TripAnalysis{parse:OCRParseResult;metrics?:TripMetrics;classification:Classification;reasons:string[];missingFields:ParsedField[]}
 export interface AnalysisHistoryItem{ id:string;createdAt:string;analysis:TripAnalysis;driverDecision:DriverDecision }
-export interface APIRequest{text:string;platform?:'auto'|Platform;deviceId?:string;save?:boolean;token?:string}
+export interface APIRequest{text:string;platform?:'auto'|Platform;deviceId?:string;deviceID?:string;device_id?:string;deviceid?:string;save?:boolean|string;token?:string}
 export interface APIResponse{success:boolean;classification:Classification;title:string;summary:string;data?:Record<string,string|number>;warnings?:string[];missingFields?:ParsedField[]}
 export type TripDecision=Classification;
