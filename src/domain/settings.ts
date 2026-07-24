@@ -1,0 +1,2 @@
+import type {VehicleSettings} from '../types';
+export const DEFAULT_SETTINGS:VehicleSettings={name:'',country:'México',currency:'MXN',fuelType:'Gasolina',fuelPricePerLiter:24.5,fuelEfficiencyKmPerLiter:11,maintenanceCostPerKm:1.7,additionalCostPerKm:.35,contingencyPercent:10,extraMinutes:3,includePickupDistance:true,includePickupTime:true,thresholds:{minNetPerKm:5,minNetPerHour:100,regularTolerancePercent:15},theme:'dark'};

@@ -1,0 +1,4 @@
+name = "conviene-app"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = "dist"
+# Tras crear D1, agregue un binding llamado DB.
