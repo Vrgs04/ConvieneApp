@@ -1,4 +1,8 @@
 name = "conviene-app"
 compatibility_date = "2025-01-01"
 pages_build_output_dir = "dist"
-# Tras crear D1, agregue un binding llamado DB.
+
+[[d1_databases]]
+binding = "DB"
+database_name = "convieneapp-db"
+database_id = "c3e3dd80-7e51-4dc0-83ff-b8d8a7da7b67"

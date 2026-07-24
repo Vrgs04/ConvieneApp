@@ -1,7 +1,7 @@
 export type Platform='uber'|'didi'|'other';
 export type Classification='profitable'|'regular'|'unprofitable'|'insufficient';
 export type DriverDecision='accepted'|'rejected'|'pending';
-export interface VehicleSettings{name:string;country:string;currency:string;fuelType:string;fuelPricePerLiter:number;fuelEfficiencyKmPerLiter:number;maintenanceCostPerKm:number;additionalCostPerKm:number;contingencyPercent:number;extraMinutes:number;includePickupDistance:boolean;includePickupTime:boolean;thresholds:ProfitabilityThresholds;theme:'dark'|'light'|'system'}
+export interface VehicleSettings{name:string;country:string;currency:string;fuelType:string;fuelPricePerLiter:number;fuelEfficiencyKmPerLiter:number;maintenanceCostPerKm:number;additionalCostPerKm:number;contingencyPercent:number;extraMinutes:number;includePickupDistance:boolean;includePickupTime:boolean;syncCode:string;thresholds:ProfitabilityThresholds;theme:'dark'|'light'|'system'}
 export interface ProfitabilityThresholds{minNetPerKm:number;minNetPerHour:number;regularTolerancePercent:number}
 export type ParsedField='offeredFare'|'pickupDistanceKm'|'tripDistanceKm'|'pickupDurationMin'|'tripDurationMin';
 export interface OCRParseResult{platform:Platform;offeredFare?:number;pickupDistanceKm?:number;tripDistanceKm?:number;pickupDurationMin?:number;tripDurationMin?:number;confidence:number;fieldConfidence:Partial<Record<ParsedField,number>>;warnings:string[];rawText:string}

@@ -1,0 +1,6 @@
+import type{TripAnalysis}from'../../src/types';
+interface Row{id:string;created_at:string;payload_json:string}
+interface Env{DB?:{prepare(q:string):{bind(...v:unknown[]):{all<T>():Promise<{results:T[]}>}}}}
+interface Context{request:Request;env:Env}
+const security={'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff','x-frame-options':'DENY','referrer-policy':'no-referrer'};
+export const onRequestGet=async({request,env}:Context)=>{const deviceId=new URL(request.url).searchParams.get('deviceId')?.trim()||'';if(deviceId.length<16||deviceId.length>128)return new Response(JSON.stringify({success:false,error:'Código de sincronización inválido.'}),{status:400,headers:security});if(!env.DB)return new Response(JSON.stringify({success:false,error:'Historial remoto no configurado.'}),{status:503,headers:security});const{results}=await env.DB.prepare('SELECT id, created_at, payload_json FROM analyses WHERE device_id = ? ORDER BY created_at DESC LIMIT 500').bind(deviceId).all<Row>();const items=results.flatMap(row=>{try{return[{id:row.id,createdAt:row.created_at,analysis:JSON.parse(row.payload_json) as TripAnalysis,driverDecision:'pending' as const}]}catch{return[]}});return new Response(JSON.stringify({success:true,items}),{headers:security})};
