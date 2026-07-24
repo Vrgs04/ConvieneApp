@@ -1,0 +1,5 @@
+.image-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.image-actions .upload{margin:8px 0;padding:8px;text-align:center}
+.notification-button{margin:10px 0 0}
+.error{background:rgba(255,107,104,.12);border:1px solid rgba(255,107,104,.35);color:#ffaaa7;padding:12px;border-radius:12px}
+@media(max-width:360px){.image-actions{grid-template-columns:1fr}}

@@ -1,0 +1,4 @@
+import type{TripAnalysis}from'./types';import{titles}from'./domain/calculator';
+export function notificationsSupported(){return 'Notification'in window&&'serviceWorker'in navigator}
+export async function enableNotifications():Promise<NotificationPermission>{if(!notificationsSupported())return'denied';return Notification.requestPermission()}
+export async function notifyAnalysis(a:TripAnalysis){if(!notificationsSupported()||Notification.permission!=='granted')return;const m=a.metrics;const body=m?`${m.netPerKm.toFixed(2)} MXN/km · ${m.netPerHour.toFixed(0)} MXN/h · Neto aprox. $${m.estimatedNetProfit.toFixed(0)}`:'Revisa tarifa, distancia y tiempo.';const reg=await navigator.serviceWorker.ready;await reg.showNotification(titles[a.classification],{body,icon:'/icon.svg',badge:'/icon.svg',tag:'conviene-result'});}

@@ -61,11 +61,18 @@ La pantalla “Configurar Atajo” contiene el flujo completo. Resumen:
 2. Esperar 1 segundo.
 3. Tomar captura.
 4. Extraer texto de la imagen.
-5. Obtener contenido de `https://SU-DOMINIO/api/analyze?format=text` por POST.
-6. Cuerpo JSON con `text` (variable de texto extraído), `platform`, `token` y `save`.
-7. Mostrar resultado.
+5. Obtener contenido de `https://convieneapp.pages.dev/api/analyze?format=text` por POST.
+6. Cuerpo JSON con `text` (variable azul “Texto de la imagen”), `platform`, `token` y `save`.
+7. Añadir “Mostrar notificación” y usar como contenido la variable “Contenido de URL”.
+8. Opcionalmente, añadir también “Mostrar resultado”.
 
 Duplique el Atajo para la segunda plataforma. Añádalo al Centro de control desde su editor. Configure y pruebe todo con el vehículo estacionado; nunca use el teléfono mientras conduce.
+
+El botón “Activar notificaciones” de la pantalla Inicio habilita avisos para análisis ejecutados dentro de la PWA. Los análisis iniciados desde Uber o DiDi deben usar “Mostrar notificación” dentro del Atajo: es la vía nativa más confiable y no depende de mantener abierta la PWA.
+
+## OCR de capturas
+
+El analizador ofrece botones separados para elegir una imagen de la galería o abrir la cámara. En capturas verticales recorta la zona probable de la tarjeta, aumenta resolución y contraste, y ejecuta una segunda pasada dedicada a la tarifa. Las imágenes no se guardan. La detección reconoce el formato ordenado `tiempo (km)`: el primer par corresponde a recogida y el segundo al trayecto del pasajero.
 
 ## Instalación en iPhone
 
