@@ -81,6 +81,7 @@ Abra la URL en Safari, toque Compartir y “Añadir a pantalla de inicio”. La 
 ## Privacidad, seguridad y limitaciones
 
 - `API_TOKEN` vive solo en Cloudflare y en el Atajo; nunca use un nombre `VITE_*`.
+- También puede definir `API_TOKENS` como una lista separada por comas para asignar un token distinto a cada Atajo.
 - La API valida tipo y longitud (máximo 15,000 caracteres), no registra OCR completo y añade encabezados defensivos.
 - D1 guarda solo campos del análisis y un resumen; no guarda capturas ni el texto OCR completo.
 - El parser usa heurísticas y no garantiza OCR perfecto. Siempre revise datos ambiguos.
